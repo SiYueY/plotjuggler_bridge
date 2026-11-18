@@ -13,7 +13,7 @@ jobs:
     name: ${{ inputs.environment }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: prefix-dev/setup-pixi@v0.9.4
         with:

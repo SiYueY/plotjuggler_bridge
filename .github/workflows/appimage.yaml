@@ -2,6 +2,7 @@ name: AppImage
 
 on:
   push:
+    branches: [ci/jazzy-arm64]
     tags: ['*']
   workflow_dispatch:
 
@@ -14,6 +15,7 @@ concurrency:
 
 jobs:
   appimage:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
       matrix:
@@ -22,7 +24,7 @@ jobs:
     name: appimage-${{ matrix.environment }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: prefix-dev/setup-pixi@v0.9.4
         with:
@@ -52,24 +54,108 @@ jobs:
       - name: Rename AppImage
         run: |
           rm -f linuxdeploy-x86_64.AppImage
-          mv *.AppImage pj_bridge_ros2-${{ matrix.environment }}-x86_64.AppImage
+          mv *.AppImage plotjuggler_bridge-ros2-${{ matrix.environment }}-x86_64.AppImage
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: appimage-${{ matrix.environment }}
+          name: plotjuggler_bridge-ros2-${{ matrix.environment }}-x86_64
           path: "*.AppImage"
 
+  appimage-jazzy-arm64:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-ros-jazzy-ros-base-latest
+    name: appimage-jazzy-arm64
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          apt-get update
+          apt-get install -y --no-install-recommends binutils curl file
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths . --ignore-src -y --rosdistro jazzy
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --packages-select pj_bridge \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+      - name: Verify ARM64 build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "aarch64"
+          test "$(dpkg --print-architecture)" = "arm64"
+          test -x install/pj_bridge/lib/pj_bridge/pj_bridge_ros2
+          readelf -h install/pj_bridge/lib/pj_bridge/pj_bridge_ros2 | grep -q 'Machine:.*AArch64'
+
+      - name: Create AppDir
+        shell: bash
+        run: ./packaging/make_ros_appdir.sh jazzy AppDir
+
+      - name: Download ARM64 appimagetool
+        shell: bash
+        run: |
+          curl -fsSL \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage \
+            -o appimagetool-aarch64.AppImage
+          chmod +x appimagetool-aarch64.AppImage
+
+      - name: Build ARM64 AppImage
+        shell: bash
+        run: |
+          VERSION="$(python3 -c 'import xml.etree.ElementTree as ET; print(ET.parse("package.xml").getroot().findtext("version"))')"
+          export ARCH=aarch64
+          export VERSION
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          ./appimagetool-aarch64.AppImage \
+            --no-appstream \
+            AppDir \
+            plotjuggler_bridge-ros2-jazzy-arm64.AppImage
+
+      - name: Verify ARM64 AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x plotjuggler_bridge-ros2-jazzy-arm64.AppImage
+          readelf -h plotjuggler_bridge-ros2-jazzy-arm64.AppImage | grep -q 'Machine:.*AArch64'
+
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout --signal=INT 8s \
+            ./plotjuggler_bridge-ros2-jazzy-arm64.AppImage \
+            --ros-args -p port:=19090 >appimage-smoke.log 2>&1
+          status=$?
+          set -e
+
+          cat appimage-smoke.log
+          if [[ $status -ne 0 && $status -ne 124 && $status -ne 130 ]]; then
+            exit "$status"
+          fi
+          grep -q 'Ready to accept WebSocket connections on port 19090' appimage-smoke.log
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plotjuggler_bridge-ros2-jazzy-arm64
+          path: plotjuggler_bridge-ros2-jazzy-arm64.AppImage
+          if-no-files-found: error
+
   release:
-    needs: appimage
+    needs: [appimage, appimage-jazzy-arm64]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
-          pattern: appimage-*
+          pattern: plotjuggler_bridge-ros2-*
           merge-multiple: true
 
       - name: Upload to GitHub Release

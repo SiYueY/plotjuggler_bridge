@@ -40,7 +40,7 @@ jobs:
       ROS_HOME: /root/.ros
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           path: src/pj_bridge
@@ -91,7 +91,7 @@ jobs:
           fakeroot debian/rules binary
 
       - name: Upload deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deb-${{ matrix.ros_distro }}
           path: src/ros-${{ matrix.ros_distro }}-*.deb
@@ -105,7 +105,7 @@ jobs:
 
     steps:
       - name: Download all deb artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: debs
           pattern: deb-*

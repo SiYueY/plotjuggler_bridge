@@ -1,10 +1,8 @@
-name: "ROS: Jazzy"
+name: "ROS: Jazzy ARM64"
 
 on:
   push:
-    branches: [development, main]
-  pull_request:
-    branches: [development, main]
+    branches: [ci/jazzy-arm64]
   workflow_dispatch:
 
 concurrency:
@@ -17,4 +15,4 @@ jobs:
     with:
       ros_distro: jazzy
       container: rostooling/setup-ros-docker:ubuntu-noble-ros-jazzy-ros-base-latest
-      runner: ubuntu-24.04
+      runner: ubuntu-24.04-arm
